@@ -1,30 +1,433 @@
-/*
- * Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT license.
- * See LICENSE in the project root for license information.
- */
+// Định nghĩa kiểu dữ liệu cho file đặc tả
+interface MappingCell {
+  cell: string;
+  dbfield?: string;
+  dbfields?: string[];
+  const?: string;
+  comment?: string;
+  identity?: number;
+}
 
-/* global document, Office, Word */
+interface Mapping {
+  dbtablename: string;
+  cells: MappingCell[];
+  _comment_mapping_?: string;
+  _comment_dbtablename_?: string;
+}
 
-Office.onReady((info) => {
-  if (info.host === Office.HostType.Word) {
-    document.getElementById("sideload-msg").style.display = "none";
-    document.getElementById("app-body").style.display = "flex";
-    document.getElementById("run").onclick = run;
-  }
-});
+interface Config {
+  nameformat: string[];
+  _comment_nameformat?: string;
+}
 
-export async function run() {
-  return Word.run(async (context) => {
-    /**
-     * Insert your Word code here
-     */
+interface SpecFile {
+  config: Config;
+  document: {
+    mapping: Mapping;
+  };
+  errMessage: string;
+}
 
-    // insert a paragraph at the end of the document.
-    const paragraph = context.document.body.insertParagraph("Hello World", Word.InsertLocation.end);
+// Khai báo biến toàn cục
+let spec: SpecFile = {
+  config: {
+    nameformat: [],
+    _comment_nameformat:
+      "Kí tự đầu tiên ? báo hiệu lấy theo dbfiled, nếu không có là hằng kí tự. Chỉ áp dụng cho xuất file từ db-->excel",
+  },
+  document: {
+    mapping: {
+      dbtablename: "",
+      _comment_dbtablename_:
+        "Tên bảng dữ liệu trong cơ sở dữ liệu. Riêng đối với db2excel thì các Sheet phải cùng lấy só liệu từ 1 bảng dữ liệu và là của sheet đầu tiên",
+      cells: [],
+      _comment_mapping_:
+        'dbfield mô tả trường dữ liệu đơn. dbfields mô tả trường dữ liệu phức, ghép xâu các trường đơn để tổng hợp dữ liệu, ví dụ dbfields:["{0}...{1}...{2}","gvhd","tendoan","loaidoan"] ',
+    },
+  },
+  errMessage: "",
+};
 
-    // change the paragraph color to blue.
-    paragraph.font.color = "blue";
+// Khởi tạo khi add-in được tải
+// Đăng ký sự kiện cho Word
+Office.onReady(() => {
+  // Cập nhật lần đầu
+  updateSelectedRange().catch(console.error);
+
+  Word.run(async (context: Word.RequestContext) => {
+    Office.context.document.addHandlerAsync(Office.EventType.DocumentSelectionChanged, () => {
+      updateSelectedRange().catch(console.error);
+    });
 
     await context.sync();
+  }).catch(console.error);
+
+  updateSpecDisplay(); // Hiển thị dữ liệu ban đầu
+});
+
+// Xử lý khi selection thay đổi
+async function handleSelectionChange(): Promise<void> {
+  await updateSelectedRange();
+}
+
+// Cập nhật vùng đang chọn
+async function updateSelectedRange(): Promise<void> {
+  try {
+    await Word.run(async (context: Word.RequestContext) => {
+      const range = context.document.getSelection();
+      range.load("text");
+      await context.sync();
+
+      // Hiển thị một phần của text được chọn (nếu quá dài)
+      let displayText = range.text.trim();
+      if (displayText.length > 30) {
+        displayText = displayText.substring(0, 30) + "...";
+      }
+      const selectionInfo = displayText ? `"${displayText}"` : "None";
+
+      document.querySelectorAll(".selected-range").forEach((el: Element) => {
+        (el as HTMLElement).textContent = selectionInfo;
+      });
+    });
+  } catch (error) {
+    console.error("Error updating selected range:", error);
+  }
+}
+
+// Cập nhật hiển thị dữ liệu spec
+function updateSpecDisplay(): void {
+  const specData: HTMLElement | null = document.getElementById("spec-data");
+  if (specData) {
+    // Format JSON với indent 2 spaces và thêm màu sắc
+    const formattedJson = JSON.stringify(spec, null, 2)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(
+        /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g,
+        function (match) {
+          let cls = "number";
+          if (/^"/.test(match)) {
+            if (/:$/.test(match)) {
+              cls = "key";
+            } else {
+              cls = "string";
+            }
+          } else if (/true|false/.test(match)) {
+            cls = "boolean";
+          } else if (/null/.test(match)) {
+            cls = "null";
+          }
+          return '<span class="' + cls + '">' + match + "</span>";
+        }
+      );
+
+    specData.innerHTML = formattedJson;
+  }
+
+  const nameFormatDisplay: HTMLElement | null = document.getElementById("nameFormatDisplay");
+  if (nameFormatDisplay) {
+    nameFormatDisplay.textContent =
+      spec.config.nameformat.length > 0 ? spec.config.nameformat.join("") : "Chưa có định dạng";
+  }
+}
+
+// Thêm nameFormat vào config
+function addNameFormat(): void {
+  const nameFormatInput: HTMLInputElement | null = document.getElementById(
+    "nameFormat"
+  ) as HTMLInputElement;
+  const nameFormat: string = nameFormatInput?.value.trim() ?? "";
+  if (nameFormat) {
+    spec.config.nameformat = nameFormat.split(/(?=\?)/);
+    console.log("Config updated:", spec.config);
+    updateSpecDisplay();
+  } else {
+    alert("Vui lòng nhập định dạng tên!");
+  }
+}
+
+// Hiển thị input tương ứng với mapping type
+function toggleMappingInputs(): void {
+  const mappingTypeSelect: HTMLSelectElement | null = document.getElementById(
+    "mappingType"
+  ) as HTMLSelectElement;
+  const mappingType: string = mappingTypeSelect?.value ?? "dbfield";
+  const inputs: string[] = ["dbfieldInput", "dbfieldsInput", "constInput", "commentInput"];
+
+  inputs.forEach((id: string) => {
+    const element: HTMLElement | null = document.getElementById(id);
+    if (element) element.style.display = "none";
+  });
+
+  const activeInput: HTMLElement | null = document.getElementById(`${mappingType}Input`);
+  if (activeInput) activeInput.style.display = "block";
+}
+
+// Cập nhật danh sách mapping
+function updateMappingList(): void {
+  const mappingList: HTMLElement | null = document.getElementById("mappingList");
+  if (!mappingList) return;
+
+  mappingList.innerHTML = "";
+  spec.document.mapping.cells.forEach((mapping: MappingCell, mappingIndex: number) => {
+    const item: HTMLDivElement = document.createElement("div");
+    item.className = "mapping-item";
+    
+    // Đảm bảo hiển thị rõ ràng cell value
+    let cellValue = mapping.cell;
+    let mappingText: string = `${cellValue}: `;
+
+    if (mapping.dbfield) {
+      mappingText += `dbfield=${mapping.dbfield}`;
+      if (mapping.identity) {
+        mappingText += `, identity=${mapping.identity}`;
+      }
+    } else if (mapping.dbfields) {
+      mappingText += `dbfields=[${mapping.dbfields.join(", ")}]`;
+    } else if (mapping.const) {
+      mappingText += `const="${mapping.const}"`;
+    } else if (mapping.comment) {
+      mappingText += `comment="${mapping.comment}"`;
+    }
+
+    // Sử dụng textContent thay vì innerHTML cho span để tránh lỗi render HTML
+    const textSpan = document.createElement("span");
+    textSpan.textContent = mappingText;
+    
+    // Tạo button xóa
+    const deleteButton = document.createElement("button");
+    deleteButton.textContent = "Delete";
+    deleteButton.onclick = function() { deleteMapping(mappingIndex); };
+    
+    // Thêm các phần tử vào item
+    item.appendChild(textSpan);
+    item.appendChild(deleteButton);
+    
+    // Thêm item vào danh sách
+    mappingList.appendChild(item);
   });
 }
+
+// Thêm mapping
+async function addMapping(): Promise<void> {
+  try {
+    await Word.run(async (context: Word.RequestContext) => {
+      const range = context.document.getSelection();
+      range.load("text");
+      await context.sync();
+
+      // Sử dụng text được chọn làm field name
+      let fieldName = range.text.trim();
+      if (!fieldName) {
+        alert("Vui lòng chọn vùng văn bản để thêm mapping!");
+        return;
+      }
+
+      // Giới hạn độ dài và format field name
+      if (fieldName.length > 50) {
+        fieldName = fieldName.substring(0, 50) + "...";
+      }
+
+      // Đặt trong <field> để phù hợp với yêu cầu
+      const cellValue = `<${fieldName}>`;
+
+      // Cập nhật dbTableName
+      const dbTableNameInput: HTMLInputElement | null = document.getElementById(
+        "dbTableName"
+      ) as HTMLInputElement;
+      const dbTableName = dbTableNameInput?.value.trim() ?? "";
+      spec.document.mapping.dbtablename = dbTableName;
+
+      if (!dbTableName) {
+        alert("Vui lòng nhập tên bảng dữ liệu (DB Table Name)!");
+        return;
+      }
+
+      const mappingTypeSelect: HTMLSelectElement | null = document.getElementById(
+        "mappingType"
+      ) as HTMLSelectElement;
+      const mappingType: string = mappingTypeSelect?.value ?? "dbfield";
+      const mapping: MappingCell = { cell: cellValue };
+
+      switch (mappingType) {
+        case "dbfield":
+          const dbfieldInput: HTMLInputElement | null = document.getElementById(
+            "dbfield"
+          ) as HTMLInputElement;
+          const dbfield: string = dbfieldInput?.value.trim() ?? "";
+
+          const identityCheckbox: HTMLInputElement | null = document.getElementById(
+            "identityCheckbox"
+          ) as HTMLInputElement;
+
+          if (dbfield) {
+            mapping.dbfield = dbfield;
+            if (identityCheckbox?.checked) {
+              mapping.identity = 1;
+            }
+          } else {
+            alert("Vui lòng nhập tên DB Field!");
+            return;
+          }
+          break;
+
+        case "dbfields":
+          const formatInput: HTMLInputElement | null = document.getElementById(
+            "dbfieldsFormat"
+          ) as HTMLInputElement;
+          const fieldsInput: HTMLInputElement | null = document.getElementById(
+            "dbfieldsList"
+          ) as HTMLInputElement;
+          const format: string = formatInput?.value.trim() ?? "";
+          const fieldsValue: string = fieldsInput?.value.trim() ?? "";
+
+          if (!format) {
+            alert("Vui lòng nhập định dạng cho DB Fields!");
+            return;
+          }
+
+          if (!fieldsValue) {
+            alert("Vui lòng nhập danh sách các DB Fields!");
+            return;
+          }
+
+          const fields: string[] = fieldsValue.split(",").map((f: string) => f.trim());
+          if (format && fields.length) {
+            mapping.dbfields = [format, ...fields];
+          }
+          break;
+
+        case "const":
+          const constInput: HTMLInputElement | null = document.getElementById(
+            "constValue"
+          ) as HTMLInputElement;
+          const constValue: string = constInput?.value.trim() ?? "";
+
+          if (!constValue) {
+            alert("Vui lòng nhập giá trị hằng số!");
+            return;
+          }
+
+          mapping.const = constValue;
+          break;
+
+        case "comment":
+          const commentInput: HTMLTextAreaElement | null = document.getElementById(
+            "commentValue"
+          ) as HTMLTextAreaElement;
+          const commentValue: string = commentInput?.value.trim() ?? "";
+
+          if (!commentValue) {
+            alert("Vui lòng nhập nội dung comment!");
+            return;
+          }
+
+          mapping.comment = commentValue;
+          break;
+      }
+
+      // Thêm mapping vào spec
+      spec.document.mapping.cells.push(mapping);
+      clearMappingInputs();
+      console.log("Mapping added:", mapping);
+      updateMappingList();
+      updateSpecDisplay();
+    });
+  } catch (error) {
+    console.error("Error adding mapping:", error);
+    alert(
+      "Đã xảy ra lỗi khi thêm mapping: " +
+        (error instanceof Error ? error.message : "Unknown error")
+    );
+  }
+}
+
+// Xóa mapping
+function deleteMapping(mappingIndex: number): void {
+  spec.document.mapping.cells.splice(mappingIndex, 1);
+  updateMappingList();
+  updateSpecDisplay();
+}
+
+// Xóa input sau khi thêm mapping
+function clearMappingInputs(): void {
+  const inputs: string[] = [
+    "dbfield",
+    "dbfieldsFormat",
+    "dbfieldsList",
+    "constValue",
+    "commentValue",
+  ];
+
+  inputs.forEach((id: string) => {
+    const element: HTMLInputElement | HTMLTextAreaElement | null = document.getElementById(id) as
+      | HTMLInputElement
+      | HTMLTextAreaElement;
+    if (element) element.value = "";
+  });
+
+  const identityCheckbox: HTMLInputElement | null = document.getElementById(
+    "identityCheckbox"
+  ) as HTMLInputElement;
+  if (identityCheckbox) identityCheckbox.checked = false;
+}
+
+// Sinh file đặc tả
+function generateSpecFile(): void {
+  // Cập nhật dbTableName
+  const dbTableNameInput: HTMLInputElement | null = document.getElementById(
+    "dbTableName"
+  ) as HTMLInputElement;
+  spec.document.mapping.dbtablename = dbTableNameInput?.value.trim() ?? "";
+
+  if (spec.document.mapping.cells.length === 0 && spec.config.nameformat.length === 0) {
+    alert("Vui lòng thêm dữ liệu để tạo file đặc tả!");
+    return;
+  }
+
+  const jsonString: string = JSON.stringify(spec, null, 2);
+  const blob: Blob = new Blob([jsonString], { type: "application/json" });
+  const link: HTMLAnchorElement = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = "spec.json";
+  link.click();
+
+  // Hiển thị thông báo thành công
+  const notification = document.createElement("div");
+  notification.className = "success-notification";
+  notification.textContent = "File đặc tả đã được tạo thành công!";
+  document.body.appendChild(notification);
+
+  setTimeout(() => {
+    notification.remove();
+  }, 3000);
+}
+
+// Lưu tên bảng DB
+function saveDbTableName(): void {
+  const dbTableNameInput: HTMLInputElement | null = document.getElementById(
+    "dbTableName"
+  ) as HTMLInputElement;
+  spec.document.mapping.dbtablename = dbTableNameInput?.value.trim() ?? "";
+
+  // Hiển thị thông báo
+  const notification = document.createElement("div");
+  notification.className = "success-notification";
+  notification.textContent = "Đã lưu tên bảng DB!";
+  document.body.appendChild(notification);
+
+  setTimeout(() => {
+    notification.remove();
+  }, 3000);
+
+  updateSpecDisplay();
+}
+
+// Gắn các hàm vào window
+(window as any).addNameFormat = addNameFormat;
+(window as any).toggleMappingInputs = toggleMappingInputs;
+(window as any).addMapping = addMapping;
+(window as any).deleteMapping = deleteMapping;
+(window as any).generateSpecFile = generateSpecFile;
+(window as any).saveDbTableName = saveDbTableName;

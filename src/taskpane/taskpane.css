@@ -324,3 +324,8 @@ select:focus {
 .hidden {
   display: none;
 }
+
+.multi-select {
+  min-height: 100px;
+  width: 100%;
+}

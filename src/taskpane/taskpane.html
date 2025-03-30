@@ -34,7 +34,10 @@
             <div class="input-group">
               <label>DB Table Name:</label>
               <div class="input-with-button">
-                <input type="text" id="dbTableName" placeholder="e.g., students" />
+                <select id="dbTableName" onchange="updateFieldOptions()">
+                  <option value="">-- Chọn bảng dữ liệu --</option>
+                  <!-- Options will be populated dynamically -->
+                </select>
                 <button onclick="saveDbTableName()">Lưu</button>
               </div>
             </div>
@@ -62,7 +65,10 @@
                 <div class="form-row">
                   <div class="input-group">
                     <label>DB Field:</label>
-                    <input type="text" id="dbfield" placeholder="e.g., mssv" />
+                    <select id="dbfield">
+                      <option value="">-- Chọn trường dữ liệu --</option>
+                      <!-- Options will be populated dynamically -->
+                    </select>
                   </div>
                   <div class="input-group checkbox-group">
                     <label class="checkbox-container">
@@ -85,10 +91,21 @@
                 <div class="form-row">
                   <div class="input-group">
                     <label>Fields:</label>
+                    <select id="dbfieldsSelect" multiple class="multi-select">
+                      <option value="">-- Chọn trường dữ liệu --</option>
+                      <!-- Options will be populated dynamically -->
+                    </select>
+                    <small class="helper-text">Giữ Ctrl hoặc Cmd để chọn nhiều trường</small>
+                  </div>
+                </div>
+                <div class="form-row">
+                  <div class="input-group">
+                    <label>Selected Fields:</label>
                     <input
                       type="text"
                       id="dbfieldsList"
-                      placeholder="e.g., last_name, middle_name, first_name"
+                      readonly
+                      placeholder="Fields will appear here"
                     />
                   </div>
                 </div>

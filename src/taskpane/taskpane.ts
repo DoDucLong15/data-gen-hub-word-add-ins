@@ -48,9 +48,90 @@ let spec: SpecFile = {
   errMessage: "",
 };
 
+// Add this interface and predefined data near the top of your TypeScript file
+interface TableFields {
+  [tableName: string]: string[]; // Tên bảng -> danh sách các trường
+}
+
+// Khai báo dữ liệu mẫu
+const predefinedTables: TableFields = {
+  students: [
+    "student_class_name",
+    "supervisor",
+    "reviewer",
+    "phone",
+    "class_id",
+    "mssv",
+    "updated_at",
+    "middle_name",
+    "first_name",
+    "email",
+    "last_name",
+    "project_title",
+  ],
+  assignment_sheets: [
+    "semester",
+    "class_code",
+    "expected_products",
+    "thesis_start_date",
+    "student_sign_date",
+    "email",
+    "input_path",
+    "real_world_problem_solved",
+    "student_class_name",
+    "thesis_end_date",
+    "phone",
+    "school",
+    "mssv",
+    "supervisor_sign_date",
+    "project_title",
+    "technology_gained",
+    "full_name",
+    "supervisor",
+    "student_knowledge_gained",
+    "acquired_skills",
+  ],
+  guidance_reviews: [
+    "problem_difficulty_point",
+    "type_of_thesis",
+    "response_accuracy_point",
+    "topic_uniqueness_point",
+    "product_finalization_point",
+    "literature_review_point",
+    "workload_point",
+    "reward_point",
+    "layout_coherence_point",
+    "mssv",
+    "presentation_skills_point",
+    "general_feedback",
+    "solution_impact_point",
+    "project_title",
+    "full_name",
+    "supervisor",
+    "teacher_sign_date",
+    "conclusion",
+    "presentation_quality_point",
+    "content_validity_point",
+  ],
+  supervisory_comments: ["supervisor", "full_name", "mssv", "project_title"],
+};
+
 // Khởi tạo khi add-in được tải
 // Đăng ký sự kiện cho Word
 Office.onReady(() => {
+  // Populate table dropdown
+  populateTableDropdown();
+
+  // Initial update of field dropdowns
+  updateFieldOptions();
+  updateDbFieldsOptions();
+
+  // Add event listener for dbfieldsSelect
+  const dbfieldsSelect = document.getElementById("dbfieldsSelect") as HTMLSelectElement;
+  if (dbfieldsSelect) {
+    dbfieldsSelect.addEventListener("change", updateSelectedDbFields);
+  }
+
   // Cập nhật lần đầu
   updateSelectedRange().catch(console.error);
 
@@ -162,6 +243,13 @@ function toggleMappingInputs(): void {
 
   const activeInput: HTMLElement | null = document.getElementById(`${mappingType}Input`);
   if (activeInput) activeInput.style.display = "block";
+
+  // Update field options for the active input type
+  if (mappingType === "dbfield") {
+    updateFieldOptions();
+  } else if (mappingType === "dbfields") {
+    updateDbFieldsOptions();
+  }
 }
 
 // Cập nhật danh sách mapping
@@ -173,7 +261,7 @@ function updateMappingList(): void {
   spec.document.mapping.cells.forEach((mapping: MappingCell, mappingIndex: number) => {
     const item: HTMLDivElement = document.createElement("div");
     item.className = "mapping-item";
-    
+
     // Đảm bảo hiển thị rõ ràng cell value
     let cellValue = mapping.cell;
     let mappingText: string = `${cellValue}: `;
@@ -194,16 +282,18 @@ function updateMappingList(): void {
     // Sử dụng textContent thay vì innerHTML cho span để tránh lỗi render HTML
     const textSpan = document.createElement("span");
     textSpan.textContent = mappingText;
-    
+
     // Tạo button xóa
     const deleteButton = document.createElement("button");
     deleteButton.textContent = "Delete";
-    deleteButton.onclick = function() { deleteMapping(mappingIndex); };
-    
+    deleteButton.onclick = function () {
+      deleteMapping(mappingIndex);
+    };
+
     // Thêm các phần tử vào item
     item.appendChild(textSpan);
     item.appendChild(deleteButton);
-    
+
     // Thêm item vào danh sách
     mappingList.appendChild(item);
   });
@@ -252,14 +342,9 @@ async function addMapping(): Promise<void> {
 
       switch (mappingType) {
         case "dbfield":
-          const dbfieldInput: HTMLInputElement | null = document.getElementById(
-            "dbfield"
-          ) as HTMLInputElement;
-          const dbfield: string = dbfieldInput?.value.trim() ?? "";
-
-          const identityCheckbox: HTMLInputElement | null = document.getElementById(
-            "identityCheckbox"
-          ) as HTMLInputElement;
+          const dbfieldSelect = document.getElementById("dbfield") as HTMLSelectElement;
+          const dbfield = dbfieldSelect?.value ?? "";
+          const identityCheckbox = document.getElementById("identityCheckbox") as HTMLInputElement;
 
           if (dbfield) {
             mapping.dbfield = dbfield;
@@ -267,20 +352,16 @@ async function addMapping(): Promise<void> {
               mapping.identity = 1;
             }
           } else {
-            alert("Vui lòng nhập tên DB Field!");
+            alert("Vui lòng chọn tên DB Field!");
             return;
           }
           break;
 
         case "dbfields":
-          const formatInput: HTMLInputElement | null = document.getElementById(
-            "dbfieldsFormat"
-          ) as HTMLInputElement;
-          const fieldsInput: HTMLInputElement | null = document.getElementById(
-            "dbfieldsList"
-          ) as HTMLInputElement;
-          const format: string = formatInput?.value.trim() ?? "";
-          const fieldsValue: string = fieldsInput?.value.trim() ?? "";
+          const formatInput = document.getElementById("dbfieldsFormat") as HTMLInputElement;
+          const fieldsInput = document.getElementById("dbfieldsList") as HTMLInputElement;
+          const format = formatInput?.value.trim() ?? "";
+          const fieldsValue = fieldsInput?.value.trim() ?? "";
 
           if (!format) {
             alert("Vui lòng nhập định dạng cho DB Fields!");
@@ -288,11 +369,11 @@ async function addMapping(): Promise<void> {
           }
 
           if (!fieldsValue) {
-            alert("Vui lòng nhập danh sách các DB Fields!");
+            alert("Vui lòng chọn các DB Fields!");
             return;
           }
 
-          const fields: string[] = fieldsValue.split(",").map((f: string) => f.trim());
+          const fields = fieldsValue.split(",").map((f) => f.trim());
           if (format && fields.length) {
             mapping.dbfields = [format, ...fields];
           }
@@ -411,6 +492,10 @@ function saveDbTableName(): void {
   ) as HTMLInputElement;
   spec.document.mapping.dbtablename = dbTableNameInput?.value.trim() ?? "";
 
+  // Update field dropdowns based on the selected table
+  updateFieldOptions();
+  updateDbFieldsOptions();
+
   // Hiển thị thông báo
   const notification = document.createElement("div");
   notification.className = "success-notification";
@@ -424,6 +509,102 @@ function saveDbTableName(): void {
   updateSpecDisplay();
 }
 
+// Add these functions to your TypeScript file
+
+// Populate table dropdown on startup
+function populateTableDropdown(): void {
+  const tableSelect = document.getElementById("dbTableName") as HTMLSelectElement;
+  if (!tableSelect) return;
+
+  // Clear existing options except the first one
+  while (tableSelect.options.length > 1) {
+    tableSelect.remove(1);
+  }
+
+  // Add predefined tables
+  Object.keys(predefinedTables).forEach((tableName) => {
+    const option = document.createElement("option");
+    option.value = tableName;
+    option.textContent = tableName;
+    tableSelect.appendChild(option);
+  });
+}
+
+// Update field dropdowns based on selected table
+function updateFieldOptions(): void {
+  const tableSelect = document.getElementById("dbTableName") as HTMLSelectElement;
+  const dbfieldSelect = document.getElementById("dbfield") as HTMLSelectElement;
+
+  if (!tableSelect || !dbfieldSelect) return;
+
+  const selectedTable = tableSelect.value;
+
+  // Clear existing field options
+  while (dbfieldSelect.options.length > 1) {
+    dbfieldSelect.remove(1);
+  }
+
+  // If no table selected, return
+  if (!selectedTable || !predefinedTables[selectedTable]) return;
+
+  // Add fields for the selected table
+  predefinedTables[selectedTable].forEach((field) => {
+    const option = document.createElement("option");
+    option.value = field;
+    option.textContent = field;
+    dbfieldSelect.appendChild(option);
+  });
+
+  // Update the spec with the selected table name
+  spec.document.mapping.dbtablename = selectedTable;
+  updateSpecDisplay();
+}
+
+function updateDbFieldsOptions(): void {
+  const tableSelect = document.getElementById("dbTableName") as HTMLSelectElement;
+  const dbfieldsSelect = document.getElementById("dbfieldsSelect") as HTMLSelectElement;
+
+  if (!tableSelect || !dbfieldsSelect) return;
+
+  const selectedTable = tableSelect.value;
+
+  // Clear existing field options
+  while (dbfieldsSelect.options.length > 1) {
+    dbfieldsSelect.remove(1);
+  }
+
+  // If no table selected, return
+  if (!selectedTable || !predefinedTables[selectedTable]) return;
+
+  // Add fields for the selected table
+  predefinedTables[selectedTable].forEach((field) => {
+    const option = document.createElement("option");
+    option.value = field;
+    option.textContent = field;
+    dbfieldsSelect.appendChild(option);
+  });
+}
+
+// Update dbfieldsList input when fields are selected
+function updateSelectedDbFields(): void {
+  const dbfieldsSelect = document.getElementById("dbfieldsSelect") as HTMLSelectElement;
+  const dbfieldsList = document.getElementById("dbfieldsList") as HTMLInputElement;
+
+  if (!dbfieldsSelect || !dbfieldsList) return;
+
+  const selectedFields: string[] = [];
+
+  // Get all selected options
+  for (let i = 0; i < dbfieldsSelect.options.length; i++) {
+    if (dbfieldsSelect.options[i].selected && dbfieldsSelect.options[i].value) {
+      selectedFields.push(dbfieldsSelect.options[i].value);
+    }
+  }
+
+  // Update the dbfieldsList input with comma-separated values
+  dbfieldsList.value = selectedFields.join(", ");
+}
+
 // Gắn các hàm vào window
 (window as any).addNameFormat = addNameFormat;
 (window as any).toggleMappingInputs = toggleMappingInputs;
@@ -431,3 +612,6 @@ function saveDbTableName(): void {
 (window as any).deleteMapping = deleteMapping;
 (window as any).generateSpecFile = generateSpecFile;
 (window as any).saveDbTableName = saveDbTableName;
+(window as any).updateFieldOptions = updateFieldOptions;
+(window as any).updateDbFieldsOptions = updateDbFieldsOptions;
+(window as any).updateSelectedDbFields = updateSelectedDbFields;

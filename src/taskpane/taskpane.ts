@@ -319,8 +319,14 @@ async function addMapping(): Promise<void> {
         fieldName = fieldName.substring(0, 50) + "...";
       }
 
-      // Đặt trong <field> để phù hợp với yêu cầu
-      const cellValue = `<${fieldName}>`;
+      // Đặt trong {field} để phù hợp với yêu cầu
+      if(!fieldName.startsWith("{")) {
+        fieldName = `{${fieldName}`;
+      }
+      if(!fieldName.endsWith("}")) {
+        fieldName += "}";
+      }
+      const cellValue = fieldName;
 
       // Cập nhật dbTableName
       const dbTableNameInput: HTMLInputElement | null = document.getElementById(

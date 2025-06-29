@@ -113,7 +113,28 @@ const predefinedTables: TableFields = {
     "presentation_quality_point",
     "content_validity_point",
   ],
-  supervisory_comments: ["supervisor", "full_name", "mssv", "project_title"],
+  supervisory_comments: [
+    "full_name",
+    "mssv",
+    "project_title",
+    "reviewer",
+    "type_of_thesis",
+    "topic_uniqueness_point",
+    "workload_point",
+    "problem_difficulty_point",
+    "solution_impact_point",
+    "product_finalization_point",
+    "layout_coherence_point",
+    "content_validity_point",
+    "presentation_quality_point",
+    "literature_review_point",
+    "response_accuracy_point",
+    "presentation_skills_point",
+    "reward_point",
+    "general_feedback",
+    "conclusion",
+    "teacher_sign_date",
+  ],
 };
 
 // Khởi tạo khi add-in được tải
@@ -320,10 +341,10 @@ async function addMapping(): Promise<void> {
       }
 
       // Đặt trong {field} để phù hợp với yêu cầu
-      if(!fieldName.startsWith("{")) {
+      if (!fieldName.startsWith("{")) {
         fieldName = `{${fieldName}`;
       }
-      if(!fieldName.endsWith("}")) {
+      if (!fieldName.endsWith("}")) {
         fieldName += "}";
       }
       const cellValue = fieldName;
